@@ -1,26 +1,26 @@
-# 加载配置文件夹内文件的代码
+# Load configuration files within the folder
 def read_config_file(filepath):
     config = {}
     with open(filepath, 'r') as file:
         for line in file:
-            # 移除多余的空白字符
+            # Remove unnecessary whitespace characters
             line = line.strip()
-            # 跳过空行或注释行
+            # Skip empty or comment lines
             if not line or not line[0].isalpha():
                 continue
-            # 拆分键和值
+            # Split the key and value
             key, value = line.split('=', 1)
-            # 去掉键和值的多余空白并转换数值
+            # Remove extra spaces from key and value, and convert values
             key = key.strip()
             value = value.strip()
             try:
-                # 尝试将值转换为浮点数或整数
+                # Try to convert the value to a float or integer
                 if '.' in value:
                     value = float(value)
                 else:
                     value = int(value)
             except ValueError:
-                pass  # 如果不能转换为数字，保留为字符串
+                pass  # If conversion fails, keep the value as a string
             config[key] = value
     return config
 
@@ -35,14 +35,14 @@ def read_station_file(filepath, conf):
     yRef = float(yRef) * 1000
     with open(filepath, 'r') as file:
         for line in file:
-            # 移除多余的空白字符
+            # Remove unnecessary whitespace characters
             line = line.strip()
-            # 跳过空行或注释行
+            # Skip empty or comment lines
             if not line or not line[0].isalpha():
                 continue
-            #拆分站号、坐标
+            # Split station ID and coordinates
             sta_id, x, y, z = line.split()
-            # 加入list
+            # Add to list
             obs_sys['sta_ids'].append(sta_id)
             obs_sys['x'].append(round(float(x)-xRef, 3))
             obs_sys['y'].append(round(float(y)-yRef, 3))
@@ -52,7 +52,7 @@ def read_station_file(filepath, conf):
 
 
 if __name__ == '__main__':
-    # 示例用法
+    # Example usage
     conf_s1 = read_config_file('./config/conf_s1.txt')
     print(conf_s1)
     obs_sys = read_station_file('./config/station.txt', conf_s1)

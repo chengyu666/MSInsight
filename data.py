@@ -74,11 +74,11 @@ def readsac(fpath, z_only=False):
 
 
 def readSeveralSegy(path_list):
-    """读取文件列表内所有文件的波形
-    注意，需要保证文件是连续的！
+    """Read waveforms from all files in the file list
+    Note: Ensure that the files are continuous!
 
     Args:
-        path_list (list): 文件列表
+        path_list (list): List of file paths
     """
     data_all = None
     datetime_start = None
@@ -94,26 +94,27 @@ def readSeveralSegy(path_list):
 
 def whightening(data, f1, f2, f3, f4, sample_rate, epsilon=1e-10):
     """
-    对单道地震波形数据进行带通频率范围内的谱白化处理，采用梯形带通（f1~f2~f3~f4）。
+    Perform spectral whitening on single seismic waveform data within a bandpass frequency range,
+    using a trapezoidal bandpass filter (f1~f2~f3~f4).
 
-    参数:
-    data: 一维numpy数组，表示单道地震波形数据
-    f1: 截止带下限频率 (Hz)
-    f2: 通带下限频率 (Hz)
-    f3: 通带上限频率 (Hz)
-    f4: 截止带上限频率 (Hz)
-    sample_rate: 数据的采样率 (Hz)
-    epsilon: 小的常数，用于避免除零错误
+    Parameters:
+    data: 1D numpy array representing single seismic waveform data
+    f1: Lower cutoff frequency (Hz)
+    f2: Lower passband frequency (Hz)
+    f3: Upper passband frequency (Hz)
+    f4: Upper cutoff frequency (Hz)
+    sample_rate: Sampling rate of the data (Hz)
+    epsilon: Small constant to avoid division by zero errors
 
-    返回:
-    whitened_data: 白化后的时间域信号
+    Returns:
+    whitened_data: Whitened time-domain signal
     """
     fft_data = np.fft.fft(data)
     freqs = np.fft.fftfreq(len(data), d=1/sample_rate)
     magnitude = np.abs(fft_data)
     whitened_fft_data = np.zeros_like(fft_data, dtype=complex)
 
-    # 梯形带通窗函数
+    # Trapezoidal bandpass window function
     def trapezoid_window(f):
         af = np.abs(f)
         if af < f1 or af > f4:
@@ -138,19 +139,20 @@ def whightening(data, f1, f2, f3, f4, sample_rate, epsilon=1e-10):
 
 def stalta(data, nsta, nlta):
     """
-    计算地震数据的STA/LTA比率.
+    Calculate the STA/LTA ratio for seismic data.
 
-    参数:
-        data: 输入的地震数据 (numpy array).
-        nsta: 短时窗的样本数.
-        nlta: 长时窗的样本数.
+    Parameters:
+        data: Input seismic data (numpy array)
+        nsta: Number of samples for the short time window
+        nlta: Number of samples for the long time window
 
-    返回:
-        stalta: 计算得到的STA/LTA比率 (numpy array).
+    Returns:
+        stalta: Calculated STA/LTA ratio (numpy array)
     """
-    # 确保窗口长度不会超过数据长度
+    # Ensure the window length does not exceed the data length
     if len(data) < nlta:
-        raise ValueError("数据长度必须大于长时窗长度。")
+        raise ValueError(
+            "Data length must be greater than the long time window length.")
 
     result = classic_sta_lta(data, nsta, nlta)
     # result = carl_sta_trig(result, nsta, nlta, ratio=5.0, quiet=1.0)
@@ -159,17 +161,17 @@ def stalta(data, nsta, nlta):
 
 
 def generate_tt(path_conf, path_vel, path_station):
-    """调用dll生成走时表
+    """Call DLL to generate travel time table
 
     Args:
-        path_conf (str): 配置文件路径
-        path_vel (str): 速度模型文件路径
-        path_station (str): 台站文件路径
+        path_conf (str): Configuration file path
+        path_vel (str): Velocity model file path
+        path_station (str): Station file path
 
     Returns:
-        3*np.ndarray: 走时表：下标顺序为i_sta,i_grid
+        3*np.ndarray: Travel time table: indices are i_sta, i_grid
     """
-    # 加载 DLL
+    # Load DLL
     mylib = ctypes.CDLL('./RTtraveltime.dll')
     mylib.cuda_raytrace.argtypes = [
         ctypes.c_uint,                # threads_per_block
@@ -182,7 +184,7 @@ def generate_tt(path_conf, path_vel, path_station):
     ]
     mylib.cuda_raytrace.restype = ctypes.c_int
 
-    # 设置调用参数
+    # Set arguments
     threads_per_block = 64
     conf = read_config_file(path_conf)
     stations = read_station_file(path_station, conf)
@@ -192,21 +194,19 @@ def generate_tt(path_conf, path_vel, path_station):
     nz = conf['SearchSizeZ']
     ng = nx * ny * nz
     output_size = nsta * nx * ny * nz
-    # print(nsta, nx, ny, nz)
-    # print("output_size:", output_size)
-    # 初始化输出数组
+    # Initialize output arrays
     output_tt = np.zeros(output_size, dtype=np.float32)
     output_incident = np.zeros(output_size, dtype=np.float32)
     output_azimuth = np.zeros(output_size, dtype=np.float32)
 
-    # 转换 numpy 数组为 ctypes 指针
+    # Convert numpy arrays to ctypes pointers
     output_tt_ptr = output_tt.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     output_incident_ptr = output_incident.ctypes.data_as(
         ctypes.POINTER(ctypes.c_float))
     output_azimuth_ptr = output_azimuth.ctypes.data_as(
         ctypes.POINTER(ctypes.c_float))
 
-    # 调用 DLL 函数
+    # Call DLL function
     result = mylib.cuda_raytrace(
         threads_per_block,
         path_conf.encode(),
@@ -217,7 +217,7 @@ def generate_tt(path_conf, path_vel, path_station):
         output_azimuth_ptr
     )
 
-    # 检查结果
+    # Check result
     if result == 0:
         # reshape data
         output_tt = output_tt.reshape((nsta, ng))
@@ -231,16 +231,16 @@ def generate_tt(path_conf, path_vel, path_station):
 
 def fault_parameters_to_moment_tensor(strike, dip, rake):
     """
-    将断层参数（走向、倾角、滑动角）转换为矩张量。
-    参数以度为单位。
-    x轴指向北，y轴指向东，z轴指向下。
+    Convert fault parameters (strike, dip, rake) to moment tensor.
+    Parameters are in degrees.
+    The x-axis points north, y-axis points east, z-axis points down.
     """
-    # 将角度转换为弧度
+    # Convert angles to radians
     strike = np.radians(strike)
     dip = np.radians(dip)
     rake = np.radians(rake)
 
-    # 计算矩张量分量
+    # Calculate moment tensor components
     m_xx = -np.sin(dip) * np.cos(rake) * np.sin(2 * strike) - \
         np.sin(2 * dip) * np.sin(rake) * np.sin(strike)**2
     m_yy = np.sin(dip) * np.cos(rake) * np.sin(2 * strike) - \
@@ -253,7 +253,7 @@ def fault_parameters_to_moment_tensor(strike, dip, rake):
         np.cos(2 * dip) * np.sin(rake) * np.cos(strike)
     m_zz = np.sin(2 * dip) * np.sin(rake)
 
-    # 构建矩张量矩阵
+    # Construct moment tensor matrix
     moment_tensor = np.array([[m_xx, m_xy, m_xz],
                               [m_xy, m_yy, m_yz],
                               [m_xz, m_yz, m_zz]])
@@ -263,31 +263,31 @@ def fault_parameters_to_moment_tensor(strike, dip, rake):
 
 def calculate_radiation_intensity(moment_tensor, vector):
     """
-    计算给定向量在指定矩张量下的辐射强度。
-    注意vector的方向应该是从震源到接收点，三分量：北、东、下。
+    Calculate the radiation intensity of a given vector under the specified moment tensor.
+    The direction of the vector should be from the source to the receiver, with three components: North, East, Down.
     """
-    # 将向量归一化
+    # Normalize the vector
     vector = vector / np.linalg.norm(vector)
 
-    # 计算辐射强度
+    # Calculate radiation intensity
     intensity = np.dot(vector, np.dot(moment_tensor, vector))
 
     return intensity
 
 
 def gen_intensity(fm_grid, conf, station, a=0.5):
-    """生成所有网格点辐射强度
+    """Generate radiation intensity from each fault mechanism and grid point to all stations
 
     Args:
-        fm_grid : 震源机制网格
-        conf : 配置信息
-        station : 台站信息
-        a : 距离衰减参数，越大衰减越多
+        fm_grid : Fault mechanism grid
+        conf : Configuration information
+        station : Station information
+        a : Distance attenuation parameter, the larger the value, the greater the attenuation
 
     Returns:
-        ndarray: 辐射强度，形状为 (n_fm, n_grid, n_sta)
+        ndarray: Radiation intensity, shape (n_fm, n_grid, n_sta)
     """
-    # 生成每个震源机制、每个网格点到所有站的辐射强度
+    # Generate radiation intensity from each fault mechanism, each grid point to all stations
     n_fm = fm_grid.shape[0]
     n_grid = conf['SearchSizeX'] * conf['SearchSizeY'] * conf['SearchSizeZ']
     n_sta = len(station['x'])
@@ -299,7 +299,6 @@ def gen_intensity(fm_grid, conf, station, a=0.5):
         mt = fault_parameters_to_moment_tensor(
             fm_grid[i_fm, 0], fm_grid[i_fm, 1], fm_grid[i_fm, 2])
         for i_grid in range(n_grid):
-            # print(f"grid:{i_grid}/{n_grid}")
             i_z = i_grid % conf['SearchSizeZ']
             i_y = (i_grid // conf['SearchSizeZ']) % conf['SearchSizeY']
             i_x = i_grid // (conf['SearchSizeZ'] * conf['SearchSizeY'])
@@ -307,30 +306,18 @@ def gen_intensity(fm_grid, conf, station, a=0.5):
                                conf['SearchOriginY'] +
                                i_y * conf['GridSpacingX'],
                                conf['SearchOriginZ'] + i_z * conf['GridSpacingZ']])
-            # 统一单位：米
+            # Convert to consistent units: meters
             p_grid = p_grid * 1000
-            # print(f"p_grid:{p_grid}")
             for i_sta in range(n_sta):
                 p_sta = np.array(
                     [station['x'][i_sta], station['y'][i_sta], station['z'][i_sta]])
-                # print("p_sta", p_sta)
-                # 计算向量, 从震源到接收点, 三分量：北(y)、东(x)、下
+                # Calculate vector, from source to receiver, three components: North(y), East(x), Down
                 vector = [p_sta[1]-p_grid[1], p_sta[0] -
                           p_grid[0], p_sta[2]-p_grid[2]]
-                # 单位转换：从m到km
+                # Convert units: from meters to kilometers
                 vlen = np.linalg.norm(vector)/1000
-                # print(vector)
                 intensity[i_fm, i_grid, i_sta] = calculate_radiation_intensity(
                     mt, vector)*np.exp(-a*vlen)
-                # print(intensity[i_fm, i_grid, i_sta])
-                # 绘图
-            #     plt.scatter(station['x'][i_sta], station['y'][i_sta],
-            #                 c='r' if intensity[i_fm,
-            #                                    i_grid, i_sta] > 0 else 'b',
-            #                 s=abs(intensity[i_fm, i_grid, i_sta])*200)
-            # plt.axis('equal')
-            # plt.show()
-        # print(f"fm:{i_fm}/{n_fm}")
     return intensity
 
 
@@ -340,7 +327,7 @@ def gen_intensity_task(i_fm, shm_name, fm_grid, conf, station):
     n_fm = fm_grid.shape[0]
     mt = fault_parameters_to_moment_tensor(
         fm_grid[i_fm, 0], fm_grid[i_fm, 1], fm_grid[i_fm, 2])
-    # 连接到共享内存
+    # Connect to shared memory
     shm = shared_memory.SharedMemory(name=shm_name)
     shared_intensity = np.ndarray(shape=(n_fm, n_grid, n_sta), dtype=np.float32,
                                   buffer=shm.buf)
@@ -352,7 +339,7 @@ def gen_intensity_task(i_fm, shm_name, fm_grid, conf, station):
                            conf['SearchOriginY'] +
                            i_y * conf['GridSpacingX'],
                            conf['SearchOriginZ'] + i_z * conf['GridSpacingZ']])
-        # 统一单位：米
+        # Convert to consistent units: meters
         p_grid = p_grid * 1000
         for i_sta in range(n_sta):
             p_sta = np.array(
@@ -360,29 +347,28 @@ def gen_intensity_task(i_fm, shm_name, fm_grid, conf, station):
             vector = p_sta-p_grid
             shared_intensity[i_fm, i_grid, i_sta] = calculate_radiation_intensity(
                 mt, vector)
-    # print(f"fm:{i_fm}/{n_fm}")
     shm.close()
 
 
 def gen_intensity_parallel(fm_grid, conf, station, num_workers=10):
-    # 生成每个震源机制、每个网格点到所有站的辐射强度
+    # Generate radiation intensity from each fault mechanism, each grid point to all stations
     n_fm = fm_grid.shape[0]
     n_grid = conf['SearchSizeX'] * conf['SearchSizeY'] * conf['SearchSizeZ']
     n_sta = len(station['x'])
     print("n_fm/n_grid/n_sta:", n_fm, n_grid, n_sta)
-    # 创建共享内存
+    # Create shared memory
     shm = shared_memory.SharedMemory(
         create=True, size=(n_fm*n_grid*n_sta)*4)  # float32
     shared_intensity = np.ndarray(shape=(n_fm, n_grid, n_sta),
                                   dtype=np.float32, buffer=shm.buf)
     print('computing intensity...', n_fm*n_grid*n_sta)
-    # 创建进程池
+    # Create process pool
     with Pool(processes=num_workers) as pool:
-        # 每个任务计算一个fm，将任务分配给每个进程
+        # Assign each task to compute one fm
         pool.starmap(gen_intensity_task, [
                      (i_fm, shm.name, fm_grid, conf, station) for i_fm in range(n_fm)])
     intensity = np.copy(shared_intensity)
-    # 清理共享内存
+    # Clean up shared memory
     shm.close()
     shm.unlink()
 
@@ -432,10 +418,10 @@ def generate_unique_FM_grid(conf):
                 m = fault_parameters_to_moment_tensor(strike, dip, rake)
                 vec = [m[0, 0], m[1, 1], m[2, 2], m[0, 1], m[0, 2], m[1, 2]]
                 vec = np.array(vec)
-                vec /= np.linalg.norm(vec)  # 单位化，确保一致性
+                vec /= np.linalg.norm(vec)
                 mt_key = tuple(np.round(vec, decimals=4))
                 if mt_key not in unique_tensors:
-                    unique_tensors[mt_key] = (strike, dip, rake)  # 记录代表参数
+                    unique_tensors[mt_key] = (strike, dip, rake)
                 else:
                     cnt += 1
     print("exclude same FM:", cnt)

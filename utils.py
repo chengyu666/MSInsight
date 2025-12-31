@@ -1,10 +1,9 @@
-import os
 import segyio
 from matplotlib import pyplot as plt
 from datetime import datetime
 from obspy.signal.trigger import classic_sta_lta
 import matplotlib.pyplot as plt
-from obspy.imaging.beachball import beachball, mt2plane, MomentTensor
+from obspy.imaging.beachball import beachball
 import torch
 import numpy as np
 
@@ -13,7 +12,7 @@ import torch.nn.functional as F
 
 def angle_diff_deg(a, b):
     """
-    计算两个角度（单位：度）之间的最小差值，考虑周期性。
+    Calculate the minimum difference between two angles (in degrees), considering periodicity.
     """
     a = a % 360
     b = b % 360
@@ -25,38 +24,38 @@ def angle_diff_deg(a, b):
 
 def tensor_cosine_loss(M_pred, M_true, eps=1e-8):
     """
-    计算震源矩张量之间的余弦相似度损失。
+    Calculate cosine similarity loss between moment tensors.
 
-    输入:
-        M_pred: [B, 6]，模型预测的张量（6个独立分量）
-        M_true: [B, 6]，真实张量
-    返回:
-        loss: scalar，1 - cos_sim
+    Input:
+        M_pred: [B, 6], model predicted tensor (6 independent components)
+        M_true: [B, 6], ground truth tensor
+    Returns:
+        loss: scalar, 1 - cos_sim
     """
-    # 归一化
+    # Normalization
     M_pred_norm = F.normalize(M_pred, p=2, dim=1, eps=eps)
     M_true_norm = F.normalize(M_true, p=2, dim=1, eps=eps)
 
-    # 计算 batch 余弦相似度
+    # Calculate batch cosine similarity
     cos_sim = torch.sum(M_pred_norm * M_true_norm, dim=1)  # shape [B]
 
-    # 取 1 - 相似度作为损失（越相似越小）
+    # Use 1 - similarity as loss (smaller for more similar tensors)
     loss = 1.0 - cos_sim
     return loss.mean()
 
 
 def fault_parameters_to_moment_tensor(strike, dip, rake):
     """
-    将断层参数（走向、倾角、滑动角）转换为矩张量。
-    参数以度为单位。
-    x轴指向北，y轴指向东，z轴指向下。
+    Convert fault parameters (strike, dip, rake) to moment tensor.
+    Parameters are in degrees.
+    x-axis points north, y-axis points east, z-axis points down.
     """
-    # 将角度转换为弧度
+    # Convert angles to radians
     strike = np.radians(strike)
     dip = np.radians(dip)
     rake = np.radians(rake)
 
-    # 计算矩张量分量
+    # Calculate moment tensor components
     m_xx = -np.sin(dip) * np.cos(rake) * np.sin(2 * strike) - \
         np.sin(2 * dip) * np.sin(rake) * np.sin(strike)**2
     m_yy = np.sin(dip) * np.cos(rake) * np.sin(2 * strike) - \
@@ -69,7 +68,7 @@ def fault_parameters_to_moment_tensor(strike, dip, rake):
         np.cos(2 * dip) * np.sin(rake) * np.cos(strike)
     m_zz = np.sin(2 * dip) * np.sin(rake)
 
-    # 构建矩张量矩阵
+    # Build moment tensor matrix
     moment_tensor = np.array([[m_xx, m_xy, m_xz],
                               [m_xy, m_yy, m_yz],
                               [m_xz, m_yz, m_zz]])
@@ -168,19 +167,19 @@ def readsegy(fname):
 
 def stalta(data, nsta, nlta):
     """
-    计算地震数据的STA/LTA比率.
+    Calculate STA/LTA ratio for seismic data.
 
-    参数:
-        data: 输入的地震数据 (numpy array).
-        nsta: 短时窗的样本数.
-        nlta: 长时窗的样本数.
+    Parameters:
+        data: Input seismic data (numpy array).
+        nsta: Number of samples in short time window.
+        nlta: Number of samples in long time window.
 
-    返回:
-        stalta: 计算得到的STA/LTA比率 (numpy array).
+    Returns:
+        stalta: Calculated STA/LTA ratio (numpy array).
     """
-    # 确保窗口长度不会超过数据长度
+    # Ensure window length does not exceed data length
     if len(data) < nlta:
-        raise ValueError("数据长度必须大于长时窗长度。")
+        raise ValueError("Data length must be greater than long time window length.")
 
     result = classic_sta_lta(data, nsta, nlta)
     # result = carl_sta_trig(result, nsta, nlta, ratio=5.0, quiet=1.0)
@@ -190,26 +189,27 @@ def stalta(data, nsta, nlta):
 
 def whightening(data, f1, f2, f3, f4, sample_rate, epsilon=1e-10):
     """
-    对单道地震波形数据进行带通频率范围内的谱白化处理，采用梯形带通（f1~f2~f3~f4）。
+    Apply spectral whitening to single-channel seismic waveform data within a band-pass frequency range,
+    using trapezoidal band-pass (f1~f2~f3~f4).
 
-    参数:
-    data: 一维numpy数组，表示单道地震波形数据
-    f1: 截止带下限频率 (Hz)
-    f2: 通带下限频率 (Hz)
-    f3: 通带上限频率 (Hz)
-    f4: 截止带上限频率 (Hz)
-    sample_rate: 数据的采样率 (Hz)
-    epsilon: 小的常数，用于避免除零错误
+    Parameters:
+    data: 1D numpy array representing single-channel seismic waveform data
+    f1: Lower cutoff frequency (Hz)
+    f2: Lower passband frequency (Hz)
+    f3: Upper passband frequency (Hz)
+    f4: Upper cutoff frequency (Hz)
+    sample_rate: Sampling rate of the data (Hz)
+    epsilon: Small constant to avoid division by zero
 
-    返回:
-    whitened_data: 白化后的时间域信号
+    Returns:
+    whitened_data: Whitened time-domain signal
     """
     fft_data = np.fft.fft(data)
     freqs = np.fft.fftfreq(len(data), d=1/sample_rate)
     magnitude = np.abs(fft_data)
     whitened_fft_data = np.zeros_like(fft_data, dtype=complex)
 
-    # 梯形带通窗函数
+    # Trapezoidal band-pass window function
     def trapezoid_window(f):
         af = np.abs(f)
         if af < f1 or af > f4:
@@ -235,57 +235,12 @@ def whightening(data, f1, f2, f3, f4, sample_rate, epsilon=1e-10):
 def preprocess(data_raw, sample_rate, w_l=25, w_h=60):
     data = np.copy(data_raw)
     for i in range(len(data)):
-        # 去均值
+        # Remove mean
         data[i] = data[i] - np.mean(data[i])
-        # 谱白化，合成数据不要谱白化
+        # Spectral whitening (do not apply to synthetic data)
         data[i] = whightening(data[i], w_l-20, w_l, w_h, w_h+20, sample_rate)
-        # z_detect
-        # data[i] = z_detect(data[i], 10)
         # STALTA
         data[i] = stalta(data[i], 5, 40)
-        # 平滑
-        # data[i] = smooth1D(data[i], window_len=3, window='hanning')
-        # 数据归一化
+        # Data normalization
         # data[i] = data[i] / np.max(np.abs(data[i]))
     return np.asarray(data)
-
-
-if __name__ == "__main__":
-    plot_beachball([339.000, 15.000, 161.000])
-    # 在真实数据上测试
-    # 先加载数据
-    # folder_path = 'G:\seisdata\宁夏煤层气\Data_all'
-    # file_list = [f for f in os.listdir(folder_path) if f.endswith(".sgy")]
-    # file_list.sort()
-    # file_name = file_list[1]
-    # print(file_name)
-    # file_path = os.path.join(folder_path, file_name)
-    # data, sta_ids, sample_rate, datetime_start = readsegy(file_path)
-    # data = data[2, :]
-    # print("sample_rate:", sample_rate)
-    # print("sta nums:", len(sta_ids))
-    # print(sta_ids)
-    # data_all = np.array([data])
-    # print(data_all.shape)
-    # data_all = preprocess(data_all, sample_rate, 25, 60)
-
-    # plt.figure(figsize=(10, 4))
-    # plt.subplot(2, 1, 1)
-    # plt.title('Raw Data')
-    # plt.plot(data)
-    # plt.subplot(2, 1, 2)
-    # plt.title('Processed Data')
-    # plt.plot(data_all[0])
-    # plt.show()
-    # 画stft时频图
-    # from scipy.signal import stft
-    # f, t, Zxx = stft(data_all[0], fs=sample_rate, nperseg=256, noverlap=128)
-    # plt.figure(figsize=(10, 4))
-    # plt.pcolormesh(t, f, np.abs(Zxx), shading='gouraud')
-    # plt.title('STFT Magnitude')
-    # plt.ylabel('Frequency [Hz]')
-    # plt.xlabel('Time [sec]')
-    # plt.colorbar(label='Intensity')
-    # plt.ylim(0, 200)
-    # plt.show()
-    pass

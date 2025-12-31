@@ -1,11 +1,10 @@
-# 加载NonLinLoc格式走时信息，叠加地震道数据
 # from datetime import timedelta
 from config import read_config_file
-from data import generate_tt, readsegy, readsac, stalta, whightening
+from data import generate_tt, stalta
 import numpy as np
 import matplotlib.pyplot as plt
 # import os
-from draw import draw_voxel, draw_maxbrightness, draw_waveform_time
+from draw import draw_maxbrightness
 # from tqdm import tqdm
 # from multiprocessing import Pool, shared_memory
 import ctypes

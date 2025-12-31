@@ -6,9 +6,7 @@ This project is organized into the following main directories and files:
 
 - **3draytracing/**: Contains CUDA-based 3D ray tracing implementation
 
-  - RTtraveltime.cpp: Main implementation for travel time calculation
-  - kernel.cu and kernel.cuh: CUDA kernel files
-  - raycuda.cpp and raycuda.hpp: CUDA ray tracing implementation for NonLinLoc format file
+  - see readme.md for more details
 
 - **conf/**: Configuration files for the project
 
@@ -17,9 +15,7 @@ This project is organized into the following main directories and files:
 
 - **fasterStackCUDA/**: CUDA implementations for stacking algorithms
 
-  - SSA.cu: Standard SSA implementation
-  - jSSA.cu: Joint SSA implementation
-  - jSSA_ttsm.cu: Joint SSA with travel time saved to shared memory implementation
+  - see README for more details
 
 - **model/**: Contains the trained neural network model
 
