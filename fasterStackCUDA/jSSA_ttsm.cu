@@ -1,5 +1,4 @@
-// 把走时纠正值先存入shared memory
-// 目前最快
+// traveltime table preload into shared memory
 #include <cuda_runtime.h>
 #include <iostream>
 #include <chrono>
@@ -15,16 +14,16 @@ inline int getLinearIndex3d(int i, int j, int k, int cols, int rows)
 }
 
 /**
- * @brief 用于在CUDA中执行栈叠操作的核函数。计算一个网格点、机制、采样点下，所有站数据的栈叠结果。
+ * @brief CUDA kernel function to perform stacking operation. It computes the stacking result of all station data at a specific grid point, mechanism, and sample point.
  *
- * @param data 输入数据数组，大小为 n_sta * n_samples，存储每个站的数据。
- * @param tt_samples 每个站点的时间偏移数组，大小为 n_sta * n_grid，存储每个站在每个网格点的时间偏移。
- * @param intensity 强度数组，大小为 n_fm * n_grid * n_sta，存储每个机制、网格点和站的强度值。
- * @param result 输出结果数组，大小为 n_grid * n_fm * n_samples，用于存储栈叠后的结果。
- * @param n_sta 站点数量。
- * @param n_samples 每个站点的采样点数量。
- * @param n_grid 网格点数量。
- * @param n_fm 机制数量。
+ * @param data Input data array of size n_sta * n_samples, storing the data for each station.
+ * @param tt_samples Time shift array for each station, of size n_sta * n_grid, storing the time shift for each station at each grid point.
+ * @param intensity Intensity array of size n_fm * n_grid * n_sta, storing the intensity values for each mechanism, grid point, and station.
+ * @param result Output result array of size n_grid * n_fm * n_samples, used to store the stacked result.
+ * @param n_sta Number of stations.
+ * @param n_samples Number of sample points for each station.
+ * @param n_grid Number of grid points.
+ * @param n_fm Number of mechanisms.
  */
 __global__ void stackKernel(const float *data, const int *tt_samples, const float *intensity,
                             float *result, int n_sta, int n_samples, int n_grid, int n_fm)
@@ -33,7 +32,7 @@ __global__ void stackKernel(const float *data, const int *tt_samples, const floa
     int i_fm = blockIdx.y;
     int i_sample = threadIdx.x;
 
-    // 加载tt_samples到共享内存
+    // Load tt_samples into shared memory
     extern __shared__ int shared_tt_samples[];
     if (threadIdx.x == 0)
     {
@@ -42,7 +41,7 @@ __global__ void stackKernel(const float *data, const int *tt_samples, const floa
             shared_tt_samples[i] = tt_samples[i * n_grid + i_grid];
         }
     }
-    __syncthreads(); // 确保grid内所有线程都加载完毕
+    __syncthreads(); // Ensure all threads in the grid have finished loading
 
     if (i_sample >= n_samples)
         return;
@@ -52,30 +51,30 @@ __global__ void stackKernel(const float *data, const int *tt_samples, const floa
     int offset = 0;
     for (int i_sta = 0; i_sta < n_sta; ++i_sta)
     {
-        // 遍历每个站点，计算所有站点的栈叠结果
+        // Traverse each station to compute the stacking result for all stations
         offset = shared_tt_samples[i_sta];
-        if (i_sample + offset < n_samples) // 保证不越界
+        if (i_sample + offset < n_samples)
         {
             shifted_data = data[i_sta * n_samples + (i_sample + offset)];
             shifted_data *= intensity[i_fm * n_grid * n_sta + i_grid * n_sta + i_sta];
             sum += shifted_data;
         }
     }
-    sum /= n_sta; // 对所有站叠加结果求平均
+    sum /= n_sta; // Average the stacked results for all stations
     result[i_grid * n_fm * n_samples + i_fm * n_samples + i_sample] = sum;
 }
 
 /**
- * @brief 用于在CUDA中执行联合栈叠操作的函数。计算一个网格点、机制、采样点下，所有站数据的栈叠结果。
+ * @brief Function to perform joint stacking operations in CUDA. It calculates the stacking result for all station data at a specific grid point, mechanism, and sample point.
  *
- * @param data 输入数据数组，大小为 n_sta * n_samples，存储每个站的数据。
- * @param tt_samples 每个站点的时间偏移数组，大小为 n_sta * n_grid，存储每个站在每个网格点的时间偏移。
- * @param intensity 强度数组，大小为 n_fm * n_grid * n_sta，存储每个机制、网格点和站的强度值。
- * @param n_sta 站点数量。
- * @param n_samples 每个站点的采样点数量。
- * @param n_grid 网格点数量。
- * @param n_fm 机制数量。
- * @param result 输出结果数组，大小为 n_grid * n_fm * n_samples，用于存储栈叠后的结果。
+ * @param data Input data array of size n_sta * n_samples, storing data for each station.
+ * @param tt_samples Time shift array for each station, of size n_sta * n_grid, storing the time shift for each station at each grid point.
+ * @param intensity Intensity array of size n_fm * n_grid * n_sta, storing the intensity values for each mechanism, grid point, and station.
+ * @param n_sta Number of stations.
+ * @param n_samples Number of sample points for each station.
+ * @param n_grid Number of grid points.
+ * @param n_fm Number of mechanisms.
+ * @param result Output result array of size n_grid * n_fm * n_samples, used to store the stacked results.
  */
 __declspec(dllexport) int stackCUDA(const float *data, const int *tt_samples, const float *intensity,
                                     int n_sta, int n_samples, int n_grid, int n_fm,
@@ -122,17 +121,17 @@ __declspec(dllexport) int stackCUDA(const float *data, const int *tt_samples, co
 
     // Define grid and block dimensions
     dim3 gridDim(n_grid, n_fm);
-    dim3 blockDim(n_samples); // 每个Block中最多可以包含1024个线程，这里的n_samples不能超过1024
+    dim3 blockDim(n_samples); // Each block can contain at most 1024 threads, so n_samples cannot exceed 1024
     size_t shared_mem_size = n_sta * sizeof(int);
 
-    auto start = std::chrono::high_resolution_clock::now(); // 开始时间
+    auto start = std::chrono::high_resolution_clock::now();
 
     // Launch kernel
     stackKernel<<<gridDim, blockDim, shared_mem_size>>>(d_data, d_tt_samples, d_intensity, d_result,
                                                         n_sta, n_samples, n_grid, n_fm);
     cudaDeviceSynchronize();
-    auto end = std::chrono::high_resolution_clock::now();             // 结束时间
-    std::chrono::duration<double, std::milli> duration = end - start; // 计算时间差
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration = end - start;
     std::cout << "[SSA.cu] kernel execution time: " << duration.count() << " ms" << std::endl;
 
     cudaError_t err = cudaGetLastError();
@@ -249,31 +248,32 @@ typedef struct
 __global__ void intensityKernel(const float *fm_grid, const GridConfig *conf, const float *stations,
                                 float *result, int n_sta, int n_fm, int n_grid, float a)
 {
-    // 计算每个网格点、机制下，所有站数据的强度值
-    int i_grid = blockIdx.x; // 网格点索引
-    int i_fm = blockIdx.y;   // 机制索引
-    int i_sta = threadIdx.x; // 站点索引
+    // Calculate the intensity values for all station data at each grid point and mechanism
+    int i_grid = blockIdx.x; // Grid point index
+    int i_fm = blockIdx.y;   // Mechanism index
+    int i_sta = threadIdx.x; // Station index
 
     // if (i_sta >= n_sta)
     //     return;
 
-    // 计算网格点坐标
-    // 注意：GridSpacingX 和 GridSpacingY 始终相同，因此直接使用 GridSpacingX
+    // Calculate grid point coordinates
+    // Note: GridSpacingX and GridSpacingY are always the same, so we use GridSpacingX directly
     float x = conf->SearchOriginX + (i_grid / (conf->SearchSizeY * conf->SearchSizeZ)) * conf->GridSpacingX;
     float y = conf->SearchOriginY + ((i_grid / conf->SearchSizeZ) % conf->SearchSizeY) * conf->GridSpacingX;
     float z = conf->SearchOriginZ + (i_grid % conf->SearchSizeZ) * conf->GridSpacingZ;
 
-    // 计算距离
+    // Calculate distance
     float dx = x - stations[i_sta * 3];
     float dy = y - stations[i_sta * 3 + 1];
     float dz = z - stations[i_sta * 3 + 2];
-    // 向量方向：北东下
+    // vector direction: north, east, down
     float vector[3] = {dy, dx, dz};
     float v_len = sqrt(dx * dx + dy * dy + dz * dz + 1e-6);
 
-    // 计算强度值
+    // calculate moment tensor
     float moment_tensor[3][3];
     faultParametersToMomentTensor(fm_grid[i_fm * 3], fm_grid[i_fm * 3 + 1], fm_grid[i_fm * 3 + 2], moment_tensor);
+    // calculate intensity
     float *p = &result[i_fm * n_grid * n_sta + i_grid * n_sta + i_sta];
     calculateRadiationIntensity(moment_tensor, vector, *p);
     // *p = v_len;
@@ -284,22 +284,22 @@ __global__ void intensityKernel(const float *fm_grid, const GridConfig *conf, co
 }
 
 /**
- * @brief 用于在CUDA中执行强度计算的函数。计算每个网格点、机制下，所有站数据的强度值。
+ * @brief Function to compute the intensity in CUDA. It calculates the intensity values for all station data at each grid point and mechanism.
  *
- * @param fm_grid 输入数据数组，大小为 n_fm * 3，存储每个机制的参数。
- * @param conf 网格配置结构体，包含网格的参数。
- * @param stations 站点数组，大小为 n_sta * 3，存储每个站点的坐标。
- * @param n_sta 站点数量。
- * @param n_fm 机制数量。
- * @param a 距离衰减因子。
- * @param result 输出结果数组，大小为 n_fm * n_grid * n_sta，用于存储每个机制、网格点和站的强度值。
+ * @param fm_grid Input data array of size n_fm * 3, storing the parameters for each mechanism.
+ * @param conf Grid configuration structure containing grid parameters.
+ * @param stations Array of stations of size n_sta * 3, storing the coordinates of each station.
+ * @param n_sta Number of stations.
+ * @param n_fm Number of mechanisms.
+ * @param a Distance attenuation factor.
+ * @param result Output result array of size n_fm * n_grid * n_sta, used to store the intensity values for each mechanism, grid point, and station.
  */
 __declspec(dllexport) int intensityCUDA(const float *fm_grid, GridConfig *conf, float *stations,
                                         int n_sta, int n_fm, float a,
                                         float *result)
 {
     std::cout << "[SSA.cu] running intensityCUDA " << std::endl;
-    // 网格点数量
+    // Number of grid points
     int n_grid = conf->SearchSizeX * conf->SearchSizeY * conf->SearchSizeZ;
     std::cout << "[SSA.cu] n_sta: " << n_sta << " n_fm: " << n_fm << " n_grid: " << n_grid << std::endl;
 
@@ -336,7 +336,7 @@ __declspec(dllexport) int intensityCUDA(const float *fm_grid, GridConfig *conf, 
 
     // Define grid and block dimensions
     dim3 gridDim(n_grid, n_fm);
-    dim3 blockDim(n_sta); // n_sta 不能超过1024
+    dim3 blockDim(n_sta); // n_sta less than 1024
     // Launch kernel
     intensityKernel<<<gridDim, blockDim>>>(d_fm_grid, d_conf, d_stations, d_result,
                                            n_sta, n_fm, n_grid, a);
@@ -365,12 +365,12 @@ void testStack()
     int count;
     cudaGetDeviceCount(&count);
     cudaGetDeviceProperties(&prop, 0);
-    std::cout << "GPU数量: " << count << std::endl;
-    std::cout << "每个Block最大线程数: " << prop.maxThreadsPerBlock << std::endl;
-    std::cout << "每个Block最大线程维度: " << prop.maxThreadsDim[0] << " " << prop.maxThreadsDim[1] << " " << prop.maxThreadsDim[2] << std::endl;
-    std::cout << "每个Grid最大线程数: " << prop.maxGridSize[0] << " " << prop.maxGridSize[1] << " " << prop.maxGridSize[2] << std::endl;
-    std::cout << "每个Block最大共享内存: " << prop.sharedMemPerBlock << std::endl;
-    std::cout << "总显存: " << prop.totalGlobalMem << std::endl;
+    std::cout << "GPU num: " << count << std::endl;
+    std::cout << "Maximum threads per block:: " << prop.maxThreadsPerBlock << std::endl;
+    std::cout << "Maximum thread dimensions per block: " << prop.maxThreadsDim[0] << " " << prop.maxThreadsDim[1] << " " << prop.maxThreadsDim[2] << std::endl;
+    std::cout << "Maximum threads per grid: " << prop.maxGridSize[0] << " " << prop.maxGridSize[1] << " " << prop.maxGridSize[2] << std::endl;
+    std::cout << "Maximum shared memory per block: " << prop.sharedMemPerBlock << std::endl;
+    std::cout << "Total global memory: " << prop.totalGlobalMem << std::endl;
     // Example usage
     int n_sta = 80;      // Number of stations
     int n_samples = 512; // Number of samples per station

@@ -1,6 +1,5 @@
-// 把走时纠正值先存入shared memory
-// intensity_base合并计算，减少计算量
-// 目前最快？
+// traveltime table preload into shared memory
+// batch load intensity, use asynchronous stream
 #include <cuda_runtime.h>
 #include <iostream>
 #include <chrono>
@@ -415,7 +414,7 @@ __declspec(dllexport) int intensityCUDA(const float *fm_grid, GridConfig *conf, 
                                         float *result)
 {
     std::cout << "[SSA.cu] running intensityCUDA " << std::endl;
-    // 网格点数量
+    // Number of grid points
     int n_grid = conf->SearchSizeX * conf->SearchSizeY * conf->SearchSizeZ;
     std::cout << "[SSA.cu] n_sta: " << n_sta << " n_fm: " << n_fm << " n_grid: " << n_grid << std::endl;
 

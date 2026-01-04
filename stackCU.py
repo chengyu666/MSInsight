@@ -43,47 +43,47 @@ def load_ttheader(file_path):
 
 def stack_CUDA(data, sample_rate, traveltime, chn='nez'):
     """
-    使用CUDA加速的叠加算法
+    CUDA-accelerated stacking algorithm
     Args:
         data (ndarray): (n_sta*3, n_samples)
-        sample_rate (float): 采样率
+        sample_rate (float): sampling rate
         traveltime (ndarray): (n_sta, n_grid)
     Returns:
         ndarray: (n_grid, n_samples)
     """
-    # 计算参数
+    # Calculate parameters
     n_sta, n_grid = traveltime.shape
 
     n_samples = data.shape[1]
-    # 将 traveltime 转换为采样点数
+    # Convert traveltime to sample points
     tt_samples = (traveltime * sample_rate).round().astype(np.int32)
-    # 取数据z分量
+    # Extract z-component of data
     if chn == 'nez':
         data = data[2::3, :]
     
-    # 将数据转换为 C 语言风格的数组
+    # Convert data to C-style array
     data = np.ascontiguousarray(data, dtype=np.float32)
     tt_samples = np.ascontiguousarray(tt_samples, dtype=np.int32)
-    # 初始化结果数组
+    # Initialize result array
     result = np.zeros((n_grid, n_samples), dtype=np.float32)
 
     clib = ctypes.CDLL('./SSA.dll')
     stackCUDA = getattr(clib, "?stackCUDA@@YAHPEBMPEBHHHHPEAM@Z")
-    # 参数配置
+    # Parameter configuration
     stackCUDA.argtypes = [ctypes.POINTER(ctypes.c_float),  # data
                           ctypes.POINTER(ctypes.c_int32),  # tt_samples
                           ctypes.c_int,                    # n_sta
                           ctypes.c_int,                    # n_samples
                           ctypes.c_int,                    # n_grid
                           ctypes.POINTER(ctypes.c_float)]  # result
-    # 返回值配置
+    # Return value configuration
     stackCUDA.restype = ctypes.c_int
 
-    # 数据指针
+    # Data pointers
     data_ptr = data.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     tt_samples_ptr = tt_samples.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
     result_ptr = result.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    # 调用C函数
+    # Call C function
     print("Calling CUDA function... params:")
     print(f"n_sta: {n_sta}, n_samples: {n_samples}, n_grid: {n_grid}")
     ret = stackCUDA(data_ptr, tt_samples_ptr,
@@ -97,7 +97,7 @@ def stack_CUDA(data, sample_rate, traveltime, chn='nez'):
 
 
 def calc_position(conf, max_index, sample_rate):
-    # 将maxindex换算为真实坐标
+    # Convert max_index to real coordinates
     x = max_index[0] * conf['GridSpacingX'] + conf['SearchOriginX']
     y = max_index[1] * conf['GridSpacingX'] + conf['SearchOriginY']
     z = max_index[2] * conf['GridSpacingZ'] + conf['SearchOriginZ']
@@ -124,13 +124,13 @@ def show_result(result, conf, sample_rate, show=True):
 def preprocess(data_raw, sample_rate):
     data = np.copy(data_raw)
     for i in range(len(data)):
-        # 去均值
+        # Remove mean
         data[i] = data[i] - np.mean(data[i])
-        # 谱白化，合成数据不要谱白化
+        # Spectral whitening, not applied to synthetic data
         # data[i] = whightening(data[i], 15, 60, sample_rate)
         # STALTA
         data[i] = stalta(data[i], 5, 40)
-        # 数据归一化
+        # Data normalization
         data[i] = data[i] / np.max(np.abs(data[i]))
     return np.asarray(data)
 
@@ -155,12 +155,11 @@ if __name__ == "__main__":
                               fname_vel, fname_sta)
     print("tt shape:", tt.shape)
 
-    # 数据预处理
-    # sample_rate = sample_rate / 2
+    # Data preprocessing
     data = preprocess(data_raw, sample_rate)
     # data = data[:, :3000]
 
-    # 计时
+    # Timer
     import time
     print("start stack")
     # result = stack(data, sample_rate, tt)
@@ -170,7 +169,7 @@ if __name__ == "__main__":
     print(f"stack time:{end - start:.3f}s")
     print("result shape:", result.shape)
 
-    # 判断result类型
+    # Check result type
     if type(result) == int and result == -1:
         print("stack_CU error")
         exit(0)
@@ -178,15 +177,15 @@ if __name__ == "__main__":
         conf['SearchSizeX'], conf['SearchSizeY'], conf['SearchSizeZ'],
         data.shape[1])
 
-    # 显示结果
+    # Display results
     max_index = show_result(result, conf, sample_rate)
-    # 最大值-时间变化图
+    # Maximum value-time plot
     max_eachtime = [np.max(result[:, :, :, i])
                     for i in range(data.shape[1])]
     plt.plot(max_eachtime)
     plt.show()
-    # 最大值三维剖面图
+    # Maximum value 3D profile
     draw_maxbrightness(result[:, :, :, max_index[3],], "SSA", save=False)
-    # 保存结果用于画图
+    # Save results for plotting
     np.save("./data/result_ssa_event0002.npy", result)
     print(f'result shape {result.shape} saved to ./data/result_ssa_event0002.npy')

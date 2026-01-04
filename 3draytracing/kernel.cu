@@ -4,7 +4,7 @@
 #include "kernel.cuh"
 
 /**
- * 计算一层内到某个海拔水平面的所有可能走时
+ * Calculate all possible travel times from a layer to a specific elevation level
  */
 __global__ void
 cudaRayKernel(float *vel, float *thick, float *rho, float *travel_time, float *incident,
@@ -18,7 +18,7 @@ cudaRayKernel(float *vel, float *thick, float *rho, float *travel_time, float *i
     /* while this thread is dealing with a valid index */
     if (index < dev_l_rho)
     {
-        float r = rho[index]; // 水平慢度
+        float r = rho[index]; // horizontal slowness
         float tr_time = 0.0f;
         float ep_dist = 0.0f;
         for (int k = 0; k < n_layers; k++)
@@ -28,11 +28,11 @@ cudaRayKernel(float *vel, float *thick, float *rho, float *travel_time, float *i
             ep_dist += (r * vel[k] * thick[k]) / sqrt(1 - (r * r * vel[k] * vel[k]));
         }
 
-        // 走时结果，存储到全局数组
+        // Travel time result, stored in global array
         travel_time[index] = tr_time;
-        // 震中距，存储到全局数组
+        // Epicentral distance, stored in global array
         epicentral_distance[index] = ep_dist;
-        // 计算、存储入射角的弧度值
+        // Calculate and store incident angle in radians
         incident[index] = asin(r * vel[0]);
         // printf("\ntime:%f,dist:%f,angle:%f", tr_time, ep_dist, asin(r * vel[n_layers - 1]) * 180);
         return;
@@ -40,14 +40,14 @@ cudaRayKernel(float *vel, float *thick, float *rho, float *travel_time, float *i
 }
 
 void cudaCallRayKernel(const unsigned int blocks,
-                       const unsigned int threadsPerBlock, // 每块线程数量
-                       float *vel,                         // input每层速度
-                       float *thick,                       // input每层厚度
-                       float *rho,                         // input慢度水平分量
-                       float *travel_time,                 // output走时
-                       float *incident,                    // output方位角
-                       float *epicentral_distance,         // output震中距
-                       int n_layers                        // 地层数量
+                       const unsigned int threadsPerBlock, // number of threads per block
+                       float *vel,                         // input velocity of each layer
+                       float *thick,                       // input thickness of each layer
+                       float *rho,                         // input horizontal slowness component
+                       float *travel_time,                 // output travel time
+                       float *incident,                    // output azimuth angle
+                       float *epicentral_distance,         // output epicentral distance
+                       int n_layers                        // number of layers
 )
 {
 
@@ -57,7 +57,7 @@ void cudaCallRayKernel(const unsigned int blocks,
 }
 
 /**
- * 寻找一层内每个网格点到每个站的最逼近射线
+ * Find the closest ray from each grid point in a layer to each station
  */
 __global__ void cudaFindKernel(unsigned int nx,
                                unsigned int ny,
@@ -72,7 +72,7 @@ __global__ void cudaFindKernel(unsigned int nx,
 )
 {
     /* get current thread's id */
-    // index直接是staxy数组下标
+    // index is directly the staxy array index
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     // printf("\ncurrent id:%d", index);
 
@@ -82,11 +82,11 @@ __global__ void cudaFindKernel(unsigned int nx,
         float real_ed = staxy_ed[index];
         float best_err = FLT_MAX;
         float best_tt, best_incident;
-        // 遍历寻找最小err，记录对应的tt,incident,err到数组
+        // Iterate to find minimum err, record corresponding tt, incident, err to array
         for (int k = 0; k < dev_l_rho; ++k)
         {
             float err = abs(epicentral_distance[k] - real_ed);
-            // 更新最小误差和相关数据
+            // Update minimum error and related data
             if (abs(epicentral_distance[k] - real_ed) < best_err)
             {
                 best_err = err;
@@ -94,7 +94,7 @@ __global__ void cudaFindKernel(unsigned int nx,
                 best_incident = incident[k];
             }
         }
-        // 将结果写入输出数组
+        // Write results to output array
         staxy_tt[index] = best_tt;
         staxy_incident[index] = best_incident;
         staxy_err[index] = best_err;
@@ -121,7 +121,7 @@ void cudaCallFindKernel(
                                                 staxy_tt, staxy_incident, staxy_err);
 }
 
-// 使用 CUDA 内核的函数来设置设备全局变量
+// Function using CUDA kernel to set device global variable
 __global__ void cudaUpdateLenRho(int new_value)
 {
     dev_l_rho = new_value;

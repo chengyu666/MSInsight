@@ -1,6 +1,6 @@
 /**
- * 用于直接返回走时结果的代码
- * (而不是将结果存入文件)
+ * Code for directly returning travel time results
+ * (instead of saving results to file)
  */
 #include <cstdio>
 #include <cstdlib>
@@ -108,13 +108,13 @@ extern "C" __declspec(dllexport) int cuda_raytrace(const unsigned int threads_pe
         rho[i] = i * rho_unit;
     }
 
-    // 获取站的数量
+    // Get number of stations
     unsigned int nsta = osys.nsta;
     cout << "nsta: " << nsta << endl;
-    // 获取网格的数量
+    // Get number of grid points
     unsigned int ngrid = grid.nx * grid.ny * grid.nz;
     cout << "ngrid: " << ngrid << endl;
-    // 每层结果数量grid.nx * grid.ny * nsta
+    // Number of results per layer grid.nx * grid.ny * nsta
     unsigned int layer_result_size = grid.nx * grid.ny * nsta;
 
     // second kernel results
@@ -160,13 +160,13 @@ extern "C" __declspec(dllexport) int cuda_raytrace(const unsigned int threads_pe
     time_initial = preciseClock();
     int sta_z;
     float grid_z;
-    // 遍历站z和网格z的组合。sta_z和grid_z会导致vel和thick的长度不同，需要分开处理
+    // Iterate through combinations of station z and grid z. sta_z and grid_z will cause different lengths of vel and thick, need to handle separately
     for (size_t i_sta_z = 0; i_sta_z < classifiedAltitudes.size(); ++i_sta_z)
     {
         sta_z = classifiedAltitudes[i_sta_z];
         for (size_t i_grid_z = 0; i_grid_z < grid.zValues.size(); ++i_grid_z)
         {
-            // 计算一层内网格点到各站射线
+            // Calculate rays from grid points in one layer to each station
             grid_z = grid.zValues[i_grid_z];
             vector<float> cpu_vel, cpu_thick;
             calculateLayerProperties(input_upperbound.data(), input_vel_p.data(), n_layers, grid_z, sta_z,
@@ -179,7 +179,7 @@ extern "C" __declspec(dllexport) int cuda_raytrace(const unsigned int threads_pe
             cudaMalloc((void **)&dev_thick, cpu_nlayer * sizeof(float));
             cudaMemcpy(dev_thick, cpu_thick.data(), cpu_nlayer * sizeof(float), cudaMemcpyHostToDevice);
 
-            // 计算当前grid层到当前staz的射线走时
+            // Calculate ray travel time from current grid layer to current staz
             cudaCallRayKernel(blocks, threads_per_block, dev_vel, dev_thick, dev_rho,
                               dev_ttime, dev_angle, dev_epdistance, cpu_nlayer);
 
@@ -190,7 +190,7 @@ extern "C" __declspec(dllexport) int cuda_raytrace(const unsigned int threads_pe
 
             unsigned int find_kernel_block = ceil(layer_result_size * 1.0f / threads_per_block);
 
-            // 寻找当前grid层到staz包括站的射线走时最小值
+            // Find minimum ray travel time from current grid layer to staz including stations
             cudaCallFindKernel(find_kernel_block, threads_per_block,
                                grid.nx, grid.ny, nsta, dev_ttime, dev_angle, dev_epdistance, dev_staxy_ed,
                                dev_staxy_tt, dev_staxy_ea, dev_staxy_err);
@@ -216,9 +216,9 @@ extern "C" __declspec(dllexport) int cuda_raytrace(const unsigned int threads_pe
         for (int ista = 0; ista < nsta; ++ista)
         {
             if (osys.roundedZValues[ista] != sta_z)
-                // not in this z category
+                // not in this altitude category
                 continue;
-            // cout << "sta " << ista << " in this z category" << endl;
+            // cout << "sta " << ista << " in this altitude category" << endl;
             for (int ix = 0; ix < grid.nx; ++ix)
             {
                 for (int iy = 0; iy < grid.ny; ++iy)

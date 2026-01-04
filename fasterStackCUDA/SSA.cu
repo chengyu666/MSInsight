@@ -1,4 +1,4 @@
-// 把走时纠正值先存入shared memory
+// traveltime table preload into shared memory
 
 #include <cuda_runtime.h>
 #include <iostream>

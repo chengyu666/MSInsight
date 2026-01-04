@@ -335,12 +335,12 @@ public:
 
 void saveData(std::string attr, std::vector<std::string> sta_ids, const float *data, const int ngrid)
 {
-    // 检查路径是否存在
+    // Check if path exists
     std::string path = "./LOC/" + attr;
     DWORD dwAttrib = GetFileAttributes(path.c_str());
     if (dwAttrib == INVALID_FILE_ATTRIBUTES)
     {
-        // 目录不存在，创建目录
+        // Directory does not exist, create directory
         if (CreateDirectory(path.c_str(), NULL))
         {
             std::cout << "Directory created: " << path << std::endl;
@@ -356,11 +356,11 @@ void saveData(std::string attr, std::vector<std::string> sta_ids, const float *d
     {
         std::string filename = "./LOC/" + attr + "/layer.P." + sta_ids[i].substr(2) + "." + attr + ".buf";
         std::ofstream file(filename, std::ios::out | std::ios::binary);
-        // 检查文件是否成功打开
+        // Check if file opened successfully
         if (!file)
         {
             std::cerr << "Error opening file: " << filename << std::endl;
-            continue; // 如果文件打开失败，则跳过当前站点
+            continue; // If file opening fails, skip current station
         }
         file.write((char *)data + i * ngrid * sizeof(float), ngrid * sizeof(float));
         file.close();
@@ -376,12 +376,12 @@ std::string toUpper(const std::string &str)
 
 void saveDataInfo(std::string attr, ObsSystem osys, Grid g)
 {
-    // 检查路径是否存在
+    // Check if path exists
     std::string path = "./LOC/" + attr;
     DWORD dwAttrib = GetFileAttributes(path.c_str());
     if (dwAttrib == INVALID_FILE_ATTRIBUTES)
     {
-        // 目录不存在，创建目录
+        // Directory does not exist, create directory
         if (CreateDirectory(path.c_str(), NULL))
         {
             std::cout << "Directory created: " << path << std::endl;
@@ -396,14 +396,14 @@ void saveDataInfo(std::string attr, ObsSystem osys, Grid g)
     {
         std::string filename = "./LOC/" + attr + "/layer.P." + osys.sta_ids[i].substr(2) + "." + attr + ".hdr";
         std::ofstream file(filename, std::ios::out);
-        // 检查文件是否成功打开
+        // Check if file opened successfully
         if (!file)
         {
             std::cerr << "Error opening file: " << filename << std::endl;
-            continue; // 如果文件打开失败，则跳过当前站点
+            continue; // If file opening fails, skip current station
         }
         /**
-         * 格式:
+         * Format:
          * xNum yNum zNum xOrig yOrig zOrig dx dy dz gridType
          * staid stax stay staz
          */
