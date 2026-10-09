@@ -1,0 +1,9 @@
+numpy>=1.26
+scipy
+matplotlib
+torch>=2.6
+obspy
+segyio
+pandas
+tqdm
+torchsummary

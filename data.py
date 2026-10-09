@@ -390,7 +390,8 @@ def gen_fm_grid(conf):
     strike = np.linspace(0, 360, n_strike, endpoint=False)
     dip = np.linspace(0, 90, n_dip)
     step = 360 / n_rake
-    rake = np.arange(-180 + step, 180 + step, step)
+    # Match the mechanism-bin order used to train bfnet2_ep46_260122a.pt.
+    rake = np.arange(-180, 180, step)
     # print("strike:", strike)
     # print("dip:", dip)
     # print("rake:", rake)
